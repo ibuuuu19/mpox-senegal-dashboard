@@ -1,0 +1,80 @@
+
+============================================================
+RAPPORT DE SURVEILLANCE MPOX - SÉNÉGAL
+CIBLE : Nb_Cas (Nombre de cas par semaine)
+Date: 12/09/2026 08:48
+============================================================
+
+1. SYNTHÈSE ÉPIDÉMIOLOGIQUE
+---------------------------
+Total des cas: 474
+Régions touchées: 14
+Districts touchés: 67
+
+2. TRAITEMENT DES DONNÉES MANQUANTES
+------------------------------------
+
+Variables supprimées (>80% NA): 10
+Variables imputées (simple): 19
+Variables imputées (KNN): 1
+
+
+3. TOP 5 RÉGIONS
+----------------
+    - Dakar: 197 cas (41.6%)
+    - Diourbel: 61 cas (12.9%)
+    - Thies: 47 cas (9.9%)
+    - Kaolack: 25 cas (5.3%)
+    - Fatick: 23 cas (4.9%)
+
+
+4. ANALYSE TEMPORELLE (Cible: Nb_Cas)
+--------------------------------------
+
+Période: 2024-07-15 00:00:00 à 2026-02-05 00:00:00
+Nombre de semaines: 61
+Moyenne hebdomadaire: 7.77 cas
+Écart-type: 8.77
+Min: 1 cas
+Max: 29 cas
+Dernière semaine: 1 cas
+
+5. COMPARAISON DES MODÈLES TS
+-----------------------------
+        Modèle      RMSE       MAE        AIC
+         ARIMA  5.137140  4.374882 316.907004
+        SARIMA  4.135858  3.171462 318.592392
+  Holt-Winters 14.535417 13.269904        NaN
+       Prophet 10.177845  8.746891        NaN
+  SARIMAX_TOP3  5.766235  4.621007 319.119055
+  SARIMAX_TOP5  5.059865  4.017644 322.608573
+  SARIMAX_AUTO  5.059865  4.017644 322.608573
+          Naïf 15.196153 13.384615        NaN
+Moyenne Mobile 11.255768 10.538462        NaN
+
+✅ MEILLEUR MODÈLE: SARIMA (RMSE: 4.14)
+
+6. PRÉVISIONS
+-------------
+
+Prévisions (8 semaines):
+   15/02/2026: 19.5 cas
+   22/02/2026: 16.5 cas
+   01/03/2026: 13.9 cas
+   08/03/2026: 11.8 cas
+   15/03/2026: 10.0 cas
+   22/03/2026: 8.4 cas
+   29/03/2026: 7.1 cas
+   05/04/2026: 6.0 cas
+
+
+7. RECOMMANDATIONS
+------------------
+
+    ✅ SITUATION MAÎTRISÉE - Tendance stable ou à la baisse
+    1. Continuer la surveillance de routine
+    2. Maintenir l'analyse hebdomadaire
+
+
+============================================================
+Rapport généré le 12/09/2026 à 08:48
