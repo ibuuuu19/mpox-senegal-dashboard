@@ -764,69 +764,130 @@ def page_comparaison_modeles():
     }
     df_modeles = pd.DataFrame(modeles_data)
     
-    # Graphique RMSE
-    st.markdown(f'<div class="section-header">{icon("chart", 24, "#3B82F6")}<h2>Comparaison RMSE</h2></div>', unsafe_allow_html=True)
+    # ============================================================
+    # GRAPHIQUE RMSE
+    # ============================================================
     
-    st.markdown(f"""
-    <div class="info-box">
-        {icon('lightbulb', 24, 'white')}
-        <div class="box-content">
-            <b>Qu'est-ce que le RMSE ?</b><br><br>
-            <b>RMSE = Root Mean Squared Error</b> (Erreur Quadratique Moyenne)<br><br>
-            <b>Traduction simple :</b> C'est <b>l'erreur moyenne</b> du modèle en nombre de cas.<br><br>
-            <b>Comment lire :</b><br>
-            • RMSE bas = Modèle précis<br>
-            • RMSE élevé = Modèle imprécis<br><br>
-            <b>Exemple :</b> RMSE de 4.14 → le modèle se trompe de <b>4 cas/semaine</b>
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
+    st.markdown(f'<div class="section-header">{icon("chart", 24, "#3B82F6")}<h2>1. Comparaison RMSE</h2></div>', unsafe_allow_html=True)
     
-    fig = px.bar(df_modeles.sort_values('RMSE'),
+    st.info("""
+    **💡 Qu'est-ce que le RMSE ?**
+    
+    **RMSE = Root Mean Squared Error** (Erreur Quadratique Moyenne)
+    
+    **Traduction simple :** C'est **l'erreur moyenne** du modèle en nombre de cas.
+    
+    **Comment lire :**
+    - 📉 **RMSE bas** = Modèle précis
+    - 📈 **RMSE élevé** = Modèle imprécis
+    
+    **Exemple :** RMSE de 4.14 → le modèle se trompe de **4 cas/semaine**
+    """)
+    
+    fig_rmse = px.bar(
+        df_modeles.sort_values('RMSE'),
         x='Modèle', y='RMSE', text='RMSE',
-        color='RMSE', color_continuous_scale=['#10B981', '#F59E0B', '#EF4444'])
-    fig.update_traces(texttemplate='%{text:.2f}', textposition='outside',
-                     textfont=dict(color='white', size=11))
-    fig.update_layout(height=450, showlegend=False,
+        color='RMSE', color_continuous_scale=['#10B981', '#F59E0B', '#EF4444']
+    )
+    fig_rmse.update_traces(texttemplate='%{text:.2f}', textposition='outside',
+                          textfont=dict(color='white', size=11))
+    fig_rmse.update_layout(
+        height=450, showlegend=False,
         paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
         font=dict(color='#9CA3AF'),
-        xaxis=dict(gridcolor='#374151'),
+        xaxis=dict(gridcolor='#374151', title=''),
         yaxis=dict(gridcolor='#374151', title='RMSE (bas = meilleur)'),
-        margin=dict(l=0, r=0, t=10, b=0))
-    st.plotly_chart(fig, use_container_width=True)
+        margin=dict(l=0, r=0, t=10, b=0)
+    )
+    st.plotly_chart(fig_rmse, use_container_width=True)
     
-    # Analyse
-    st.markdown(f'<div class="section-header">{icon("trophy", 24, "#F59E0B")}<h2>Analyse</h2></div>', unsafe_allow_html=True)
+    # Analyse RMSE
+    st.success("""
+    **Les 3 meilleurs modèles (RMSE) :**
+    1. 🥇 **SARIMA** (4.14) → Erreur de **4 cas/semaine**
+    2. 🥈 **SARIMAX_TOP5** (5.06) → Erreur de **5 cas/semaine**
+    3. 🥉 **ARIMA** (5.14) → Erreur de **5 cas/semaine**
+    """)
     
-    st.markdown(f"""
-    <div class="success-box">
-        {icon('green_check', 28, '#10B981')}
-        <div class="box-content">
-            <b>Les 3 meilleurs modèles :</b><br>
-            1. 🥇 <b>SARIMA</b> (4.14) → Erreur de <b>4 cas/semaine</b><br>
-            2. 🥈 <b>SARIMAX_TOP5</b> (5.06) → Erreur de <b>5 cas/semaine</b><br>
-            3. 🥉 <b>ARIMA</b> (5.14) → Erreur de <b>5 cas/semaine</b>
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
+    st.error("""
+    **Les 3 moins bons modèles (RMSE) :**
+    1. ❌ **Naïf** (15.20) → Erreur de **15 cas/semaine**
+    2. ❌ **Holt-Winters** (14.54) → Erreur de **15 cas/semaine**
+    3. ❌ **Moyenne Mobile** (11.26) → Erreur de **11 cas/semaine**
+    """)
     
-    st.markdown(f"""
-    <div class="danger-box">
-        {icon('red_alert', 28, '#EF4444')}
-        <div class="box-content">
-            <b>Les 3 moins bons modèles :</b><br>
-            1. ❌ <b>Naïf</b> (15.20) → Erreur de <b>15 cas/semaine</b><br>
-            2. ❌ <b>Holt-Winters</b> (14.54) → Erreur de <b>15 cas/semaine</b><br>
-            3. ❌ <b>Moyenne Mobile</b> (11.26) → Erreur de <b>11 cas/semaine</b>
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
+    # ============================================================
+    # GRAPHIQUE MAE
+    # ============================================================
     
-    # Tableau
-    st.markdown(f'<div class="section-header">{icon("report", 24, "#3B82F6")}<h2>Tableau récapitulatif</h2></div>', unsafe_allow_html=True)
+    st.markdown("---")
+    st.markdown(f'<div class="section-header">{icon("chart", 24, "#3B82F6")}<h2>2. Comparaison MAE</h2></div>', unsafe_allow_html=True)
+    
+    st.info("""
+    **💡 Qu'est-ce que le MAE ?**
+    
+    **MAE = Mean Absolute Error** (Erreur Absolue Moyenne)
+    
+    **Traduction simple :** C'est **l'écart moyen** entre la prévision et la réalité.
+    
+    **Différence avec RMSE :**
+    - **RMSE** : Pénalise **plus** les grosses erreurs (plus sévère)
+    - **MAE** : Traite toutes les erreurs **pareillement** (plus simple)
+    
+    **Exemple :** MAE de 3.17 → le modèle se trompe de **3 cas/semaine**
+    """)
+    
+    fig_mae = px.bar(
+        df_modeles.sort_values('MAE'),
+        x='Modèle', y='MAE', text='MAE',
+        color='MAE', color_continuous_scale=['#10B981', '#F59E0B', '#EF4444']
+    )
+    fig_mae.update_traces(texttemplate='%{text:.2f}', textposition='outside',
+                         textfont=dict(color='white', size=11))
+    fig_mae.update_layout(
+        height=450, showlegend=False,
+        paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
+        font=dict(color='#9CA3AF'),
+        xaxis=dict(gridcolor='#374151', title=''),
+        yaxis=dict(gridcolor='#374151', title='MAE (bas = meilleur)'),
+        margin=dict(l=0, r=0, t=10, b=0)
+    )
+    st.plotly_chart(fig_mae, use_container_width=True)
+    
+    # Analyse MAE
+    st.success("""
+    **Les 3 meilleurs modèles (MAE) :**
+    1. 🥇 **SARIMA** (3.17) → Erreur de **3 cas/semaine**
+    2. 🥈 **SARIMAX_TOP5** (4.02) → Erreur de **4 cas/semaine**
+    3. 🥉 **ARIMA** (4.37) → Erreur de **4 cas/semaine**
+    """)
+    
+    st.error("""
+    **Les 3 moins bons modèles (MAE) :**
+    1. ❌ **Naïf** (13.38) → Erreur de **13 cas/semaine**
+    2. ❌ **Holt-Winters** (13.27) → Erreur de **13 cas/semaine**
+    3. ❌ **Moyenne Mobile** (10.54) → Erreur de **11 cas/semaine**
+    """)
+    
+    st.info("""
+    **💡 Interprétation :** SARIMA est **cohérent** entre RMSE et MAE. 
+    C'est un bon signe ! Si RMSE et MAE étaient très différents, cela signifierait 
+    que le modèle fait quelques **grosses erreurs** ponctuelles.
+    """)
+    
+    # ============================================================
+    # TABLEAU RÉCAPITULATIF
+    # ============================================================
+    
+    st.markdown("---")
+    st.markdown(f'<div class="section-header">{icon("report", 24, "#3B82F6")}<h2>3. Tableau récapitulatif</h2></div>', unsafe_allow_html=True)
     st.dataframe(df_modeles, use_container_width=True, hide_index=True)
     
-    # Meilleur modèle
+    # ============================================================
+    # MEILLEUR MODÈLE
+    # ============================================================
+    
+    st.markdown("---")
     st.markdown(f"""
     <div class="page-header" style="padding: 2rem;">
         <p style="font-size: 0.9rem; margin: 0;">🏆 Meilleur modèle identifié</p>
@@ -834,19 +895,6 @@ def page_comparaison_modeles():
         <p style="font-size: 1rem;">RMSE = 4.14 | MAE = 3.17</p>
     </div>
     """, unsafe_allow_html=True)
-    
-    # Message soutenance
-    st.markdown(f'<div class="section-header">{icon("lightbulb", 24, "#F59E0B")}<h2>Message pour la soutenance</h2></div>', unsafe_allow_html=True)
-    st.markdown(f"""
-    <div class="warning-box">
-        {icon('lightbulb', 28, '#F59E0B')}
-        <div class="box-content">
-            <b>Ce que vous pouvez dire au jury :</b><br><br>
-            <i>"J'ai testé <b>10 modèles</b> de séries temporelles. Le modèle <b>SARIMA</b> est le plus performant avec un <b>RMSE de 4.14</b> et un <b>MAE de 3.17</b>. SARIMA se trompe en moyenne de <b>4 cas par semaine</b>, ce qui représente une précision de <b>~50%</b>. Les modèles plus complexes (SARIMAX, Prophet) n'apportent pas d'amélioration significative."</i>
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
-
 
 # ==========================================================
 # PAGE 5 : ANALYSE SPATIALE
