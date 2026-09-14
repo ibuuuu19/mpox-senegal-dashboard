@@ -408,7 +408,10 @@ def page_header(icon_name, titre, sous_titre):
 def page_vue_ensemble(df):
     page_header("home", "Vue d'ensemble", "Synthèse des données de surveillance Mpox")
     
+    # ============================================================
     # KPIs
+    # ============================================================
+    
     col1, col2, col3, col4 = st.columns(4)
     with col1:
         st.markdown(f"""
@@ -444,65 +447,121 @@ def page_vue_ensemble(df):
     
     st.markdown("<br>", unsafe_allow_html=True)
     
-    # Graphiques
+    # ============================================================
+    # GRAPHIQUES
+    # ============================================================
+    
     col1, col2 = st.columns(2)
     
+    # Graphique 1 : TOUTES les régions
     with col1:
         st.markdown(f'<div class="section-header">{icon("chart", 24, "#3B82F6")}<h2>Cas par région</h2></div>', unsafe_allow_html=True)
         if 'Nom_region' in df.columns:
-            dist = df['Nom_region'].value_counts().head(10)
-            fig = px.bar(x=dist.values, y=dist.index, orientation='h',
-                        color=dist.values, color_continuous_scale=['#1E3A8A', '#3B82F6', '#60A5FA'])
-            fig.update_layout(height=400, showlegend=False,
-                            paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
-                            font=dict(color='#9CA3AF'),
-                            margin=dict(l=0, r=0, t=10, b=0))
+            dist = df['Nom_region'].value_counts()  # ⭐ TOUTES les régions
+            fig = px.bar(
+                x=dist.values, y=dist.index, orientation='h',
+                color=dist.values, color_continuous_scale=['#1E3A8A', '#3B82F6', '#60A5FA']
+            )
+            fig.update_layout(
+                height=500,
+                showlegend=False,
+                paper_bgcolor='rgba(0,0,0,0)', 
+                plot_bgcolor='rgba(0,0,0,0)',
+                font=dict(color='#9CA3AF'),
+                xaxis=dict(gridcolor='#374151'),
+                yaxis=dict(gridcolor='#374151'),
+                margin=dict(l=0, r=0, t=10, b=0)
+            )
             st.plotly_chart(fig, use_container_width=True)
     
+    # Graphique 2 : Distribution par sexe
     with col2:
         st.markdown(f'<div class="section-header">{icon("pie", 24, "#3B82F6")}<h2>Distribution par sexe</h2></div>', unsafe_allow_html=True)
         if 'Sexe' in df.columns:
             sex = df['Sexe'].value_counts()
-            fig = px.pie(values=sex.values, names=sex.index, hole=0.6,
-                        color_discrete_sequence=['#3B82F6', '#EC4899', '#10B981'])
-            fig.update_layout(height=400,
-                            paper_bgcolor='rgba(0,0,0,0)',
-                            font=dict(color='#9CA3AF'),
-                            margin=dict(l=0, r=0, t=10, b=0))
+            fig = px.pie(
+                values=sex.values, names=sex.index, hole=0.6,
+                color_discrete_sequence=['#3B82F6', '#EC4899', '#10B981']
+            )
+            fig.update_layout(
+                height=500,
+                paper_bgcolor='rgba(0,0,0,0)',
+                font=dict(color='#9CA3AF'),
+                margin=dict(l=0, r=0, t=10, b=0)
+            )
             st.plotly_chart(fig, use_container_width=True)
     
-    # Distribution par âge
+    # ============================================================
+    # DISTRIBUTION PAR ÂGE
+    # ============================================================
+    
     st.markdown(f'<div class="section-header">{icon("user", 24, "#3B82F6")}<h2>Distribution par âge</h2></div>', unsafe_allow_html=True)
     if 'Age_Annee' in df.columns:
         age_data = df['Age_Annee'].dropna()
         if not age_data.empty:
-            fig = px.histogram(x=age_data, nbins=20, color_discrete_sequence=['#3B82F6'])
-            fig.add_vline(x=age_data.mean(), line_dash="dash", line_color="#F59E0B",
-                         annotation_text=f"Moyenne: {age_data.mean():.1f}")
-            fig.update_layout(height=350, showlegend=False,
-                            paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
-                            font=dict(color='#9CA3AF'),
-                            xaxis=dict(gridcolor='#374151', title='Âge (années)'),
-                            yaxis=dict(gridcolor='#374151', title='Fréquence'),
-                            margin=dict(l=0, r=0, t=10, b=0))
+            fig = px.histogram(
+                x=age_data, nbins=20, 
+                color_discrete_sequence=['#3B82F6']
+            )
+            fig.add_vline(
+                x=age_data.mean(), 
+                line_dash="dash", 
+                line_color="#F59E0B",
+                annotation_text=f"Moyenne: {age_data.mean():.1f}"
+            )
+            fig.update_layout(
+                height=350, 
+                showlegend=False,
+                paper_bgcolor='rgba(0,0,0,0)', 
+                plot_bgcolor='rgba(0,0,0,0)',
+                font=dict(color='#9CA3AF'),
+                xaxis=dict(gridcolor='#374151', title='Âge (années)'),
+                yaxis=dict(gridcolor='#374151', title='Fréquence'),
+                margin=dict(l=0, r=0, t=10, b=0)
+            )
             st.plotly_chart(fig, use_container_width=True)
     
-    # Interprétation
+        # ============================================================
+    # INTERPRÉTATION (CORRIGÉE)
+    # ============================================================
+    
     st.markdown(f'<div class="section-header">{icon("lightbulb", 24, "#F59E0B")}<h2>Interprétation</h2></div>', unsafe_allow_html=True)
+    
+    # ⭐ Sex-ratio avec les BONNES valeurs
+    pct_masculin = 0
+    pct_feminin = 0
+    
+    if 'Sexe' in df.columns:
+        nb_masculin = (df['Sexe'] == 'Masculin').sum()
+        nb_feminin = (df['Sexe'] == 'Féminin').sum()
+        total_sexe = nb_masculin + nb_feminin
+        
+        if total_sexe > 0:
+            pct_masculin = nb_masculin / total_sexe * 100
+            pct_feminin = nb_feminin / total_sexe * 100
+    
+    # ⭐ Pourcentage Dakar
+    pct_dakar = 0
+    if 'Nom_region' in df.columns:
+        dakar_cas = df[df['Nom_region'] == 'Dakar'].shape[0]
+        pct_dakar = dakar_cas / len(df) * 100
+    
+    # ⭐ Âge moyen
+    age_moyen = df['Age_Annee'].mean() if 'Age_Annee' in df.columns else 0
+    
     st.markdown(f"""
     <div class="info-box">
         {icon('lightbulb', 24, 'white')}
         <div class="box-content">
             <b>Synthèse des données :</b><br>
             • <b>{len(df)} cas</b> recensés dans <b>{df['Nom_region'].nunique() if 'Nom_region' in df.columns else 0} régions</b><br>
-            • <b>Âge moyen</b> des patients : <b>{df['Age_Annee'].mean():.1f} ans</b><br>
-            • <b>Sex-ratio</b> : {(df['Sexe'] == 'M').sum() / len(df) * 100:.1f}% masculin<br>
-            • <b>Dakar</b> concentre <b>{df[df['Nom_region'] == 'Dakar'].shape[0] / len(df) * 100:.1f}%</b> des cas
+            • <b>Âge moyen</b> des patients : <b>{age_moyen:.1f} ans</b><br>
+            • <b>Sex-ratio</b> : <b>{pct_masculin:.1f}%</b> masculin, <b>{pct_feminin:.1f}%</b> féminin<br>
+            • <b>Dakar</b> concentre <b>{pct_dakar:.1f}%</b> des cas
         </div>
     </div>
     """, unsafe_allow_html=True)
-
-
+    
 # ==========================================================
 # PAGE 2 : ANALYSE TEMPORELLE
 # ==========================================================
