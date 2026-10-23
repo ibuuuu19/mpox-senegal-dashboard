@@ -4,9 +4,13 @@ numpy
 plotly
 statsmodels
 scikit-learn
+prophet
+pmdarima
 openpyxl
-fpdf2
+xlsxwriter
 matplotlib
+seaborn
+reportlab
+fpdf2
 python-dateutil
 pytz
-pmdarima
