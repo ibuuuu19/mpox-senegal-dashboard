@@ -9,3 +9,4 @@ fpdf2
 matplotlib
 python-dateutil
 pytz
+pmdarima
