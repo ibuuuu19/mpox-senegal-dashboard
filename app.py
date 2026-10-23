@@ -1673,8 +1673,30 @@ def page_guide(df: pd.DataFrame) -> None:
 # 11. PROGRAMME PRINCIPAL
 # ==========================================================
 
+
+def bloquer_traduction_navigateur() -> None:
+    """Déclare la page en français et interdit la traduction automatique du navigateur
+    (Chrome Translate modifie le DOM et provoque l'erreur « removeChild » de React)."""
+    import streamlit.components.v1 as components
+    components.html(
+        """<script>
+        try {
+          const d = window.parent.document;
+          d.documentElement.setAttribute('lang', 'fr');
+          d.documentElement.setAttribute('translate', 'no');
+          d.documentElement.classList.add('notranslate');
+          d.body.setAttribute('translate', 'no');
+          if (!d.querySelector('meta[name="google"]')) {
+            const m = d.createElement('meta'); m.name = 'google'; m.content = 'notranslate';
+            d.head.appendChild(m);
+          }
+        } catch (e) {}
+        </script>""", height=0)
+
+
 def main() -> None:
     injecter_css()
+    bloquer_traduction_navigateur()
 
     sb = st.sidebar
     sb.markdown(
