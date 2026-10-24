@@ -193,7 +193,13 @@ CSS = """
 html, body, .stApp, [class*="css"] { font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif; }
 .stApp { background: @@bg@@; color: @@ink@@; }
 [data-testid="stHeader"] { background: transparent; }
-#MainMenu, footer, [data-testid="stToolbar"], [data-testid="stDecoration"] { visibility: hidden; height: 0; }
+#MainMenu, footer, [data-testid="stDecoration"], [data-testid="stToolbarActions"], [data-testid="stMainMenu"], [data-testid="stAppDeployButton"] { visibility: hidden; height: 0; }
+[data-testid="stExpandSidebarButton"], [data-testid="stSidebarCollapsedControl"] button { position: fixed !important; top: .9rem; left: .9rem; z-index: 999999; visibility: visible !important;
+  width: 42px; height: 42px; display: grid; place-items: center; background: linear-gradient(135deg, #B8913B, #D9BC6B) !important; border: none !important; border-radius: 13px; box-shadow: 0 8px 22px -8px rgba(14,26,51,.55); cursor: pointer; }
+[data-testid="stExpandSidebarButton"] *, [data-testid="stSidebarCollapsedControl"] button * { color: #0E1A33 !important; fill: #0E1A33 !important; }
+[data-testid="stExpandSidebarButton"]:hover { transform: scale(1.06); }
+[data-testid="stSidebarCollapseButton"] button { background: rgba(255,255,255,.08) !important; border-radius: 10px; }
+[data-testid="stSidebarCollapseButton"] button * { color: #E8CF8F !important; }
 .block-container { padding: 1.4rem 2.2rem 4rem; max-width: 1320px; }
 .stApp p, .stApp li, .stApp label, .stApp span, .stApp summary { color: @@ink@@; }
 .stApp a { color: @@gold@@; }
