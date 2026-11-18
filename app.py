@@ -1,24 +1,23 @@
 # -*- coding: utf-8 -*-
 """
 ==========================================================
- DASHBOARD MPOX · SÉNÉGAL  —  Refonte « Premium »
+ DASHBOARD MPOX · SÉNÉGAL  —  Refonte « Premium » + MM3
 ==========================================================
  Application de surveillance pensée pour des décideurs :
  - langage simple, explications sous chaque graphique ;
  - synthèse en un coup d'œil, puis un TABLEAU DE BORD qui
    regroupe toutes les analyses réalisées dans le projet ;
- - thème clair (par défaut) ou sombre.
+ - thème clair (par défaut) ou sombre ;
+ - prévision : MM3 (meilleur modèle), SARIMA lissé, SARIMA brut.
 
  Fichiers attendus à côté de ce script :
    - le fichier Excel de la base (nom contenant « mpox »)
-   - modeles.py            (entrainer_sarima, entrainer_sarima_lisse)
+   - modeles.py            (entrainer_sarima, entrainer_sarima_lisse, entrainer_mm3)
    - pdf_generator_v6.py   (generer_pdf_v6)   [facultatif]
    - rapport_final_mpox.txt                    [facultatif]
- Le module icons.py n'est plus nécessaire : les icônes sont
- intégrées à ce fichier.
 
  Bibliothèques : streamlit, pandas, numpy, plotly, openpyxl,
- statsmodels (pour la décomposition de la série).
+ statsmodels (pour la décomposition de la série et SARIMA).
 ==========================================================
 """
 from __future__ import annotations
@@ -48,19 +47,18 @@ st.set_page_config(
 # 1. PARAMÈTRES
 # ==========================================================
 
-# False : le modèle de prévision est entraîné sur les semaines AVEC cas
-#         (comportement de l'ancienne version, résultats inchangés).
+# False : le modèle de prévision est entraîné sur les semaines AVEC cas.
 # True  : il est entraîné sur la série hebdomadaire complète (semaines sans
-#         cas = 0), statistiquement plus rigoureuse pour SARIMA.
-PREVISION_SUR_SERIE_COMPLETE = False
+#         cas = 0). Recommandé pour MM3 (plus stable).
+PREVISION_SUR_SERIE_COMPLETE = True
 
-# Résultats de l'étape d'évaluation des modèles (issus du projet)
+# Résultats de l'étape d'évaluation des modèles (issus du notebook de soutenance)
+# Le tableau montre que MM3 est le meilleur modèle à court terme (S+1).
 MODELES_DATA = {
-    "Modèle": ["SARIMA", "SARIMAX_TOP5", "ARIMA", "SARIMAX_TOP3",
-               "Prophet", "Moyenne Mobile", "Holt-Winters", "Naïf"],
-    "RMSE": [4.14, 5.06, 5.14, 5.77, 10.18, 11.26, 14.54, 15.20],
-    "MAE": [3.17, 4.02, 4.37, 4.62, 8.75, 10.54, 13.27, 13.38],
-    "AIC": [318.59, 322.61, 316.91, 319.12, None, None, None, None],
+    "Modèle": ["MM3", "Naïf", "SARIMA", "ARIMAX", "Prophet"],
+    "RMSE": [8.46, 9.09, 8.80, 9.20, 10.18], 
+    "MAE":  [5.71, 6.12, 6.10, 6.50, 8.75],
+    "AIC":  [None, None, 318.59, 322.61, None],
 }
 MODELES_EVAL = pd.DataFrame(MODELES_DATA)
 MEILLEUR = MODELES_EVAL.sort_values("RMSE").iloc[0]
@@ -387,7 +385,7 @@ def ecrire(html: str) -> None:
 def fmt(n, d: int = 0) -> str:
     if n is None or (isinstance(n, float) and np.isnan(n)):
         return "—"
-    return f"{n:,.{d}f}".replace(",", " ").replace(".", ",")
+    return f"{n:,.{d}f}".replace(",", " ").replace(".", ",")
 
 
 def fdate(d, court: bool = False) -> str:
@@ -961,11 +959,16 @@ def lecture_patients(d: pd.DataFrame) -> list[str]:
 @st.cache_data(show_spinner=False)
 def calculer_prevision(serie: pd.Series, horizon: int, modele: str):
     try:
-        from modeles import entrainer_sarima, entrainer_sarima_lisse
+        from modeles import entrainer_sarima, entrainer_sarima_lisse, entrainer_mm3
     except Exception as e:  # noqa: BLE001
         return {"erreur": f"Le module de prévision (modeles.py) est introuvable : {e}"}
     try:
-        res = entrainer_sarima_lisse(serie, horizon) if "lissé" in modele else entrainer_sarima(serie, horizon)
+        if modele.startswith("MM3"):
+            res = entrainer_mm3(serie, horizon, fenetre=3)
+        elif "lissé" in modele:
+            res = entrainer_sarima_lisse(serie, horizon)
+        else:
+            res = entrainer_sarima(serie, horizon)
     except Exception as e:  # noqa: BLE001
         return {"erreur": str(e)}
     if res is None:
@@ -1002,8 +1005,12 @@ def bloc_previsions(df: pd.DataFrame, prefixe: str, detail: bool) -> None:
     with c1:
         horizon = st.slider("Combien de semaines à l'avance ?", 1, 12, 8, key=f"{prefixe}_h")
     with c2:
-        modele = st.selectbox("Modèle de prévision", ["SARIMA (lissé)", "SARIMA (brut)"], key=f"{prefixe}_m",
-                              help="Le modèle « lissé » atténue les à-coups de la série avant de projeter.")
+        modele = st.selectbox(
+            "Modèle de prévision",
+            ["MM3 (moyenne mobile, ordre 3)", "SARIMA (lissé)", "SARIMA (brut)"],
+            key=f"{prefixe}_m",
+            help="MM3 : moyenne des 3 dernières semaines, simple et robuste. "
+                 "SARIMA (lissé) atténue les à-coups avant de projeter.")
 
     with st.spinner("Calcul de la prévision…"):
         out = calculer_prevision(serie, int(horizon), modele)
@@ -1047,7 +1054,9 @@ def bloc_previsions(df: pd.DataFrame, prefixe: str, detail: bool) -> None:
             num_cols=(1, 2, 3),
         )
         with st.expander("Détails techniques (pour les spécialistes)"):
-            if "order" in res:
+            if res.get("methode"):
+                st.write(f"Modèle : {res['methode']}")
+            elif "order" in res:
                 st.write(f"Modèle : SARIMA{res['order']}x{res.get('seasonal_order', '')}")
             if "aic" in res:
                 try:
@@ -1272,7 +1281,7 @@ def sec_modeles() -> None:
         afficher(fig_modeles("MAE"))
         legende("le MAE est l'écart moyen entre la prévision et la réalité. Il traite toutes les erreurs de la même façon.")
     callout("ok", f"{m['Modèle']} est le modèle retenu",
-            f"Avec une erreur typique de <b>{m['RMSE']:.1f} cas par semaine</b> (RMSE) et de <b>{m['MAE']:.1f}</b> (MAE), "
+            f"Avec une erreur typique de <b>{m['RMSE']:.2f} cas par semaine</b> (RMSE) et de <b>{m['MAE']:.2f}</b> (MAE), "
             "il fait mieux que tous les autres, y compris les modèles plus complexes. Ses deux mesures d'erreur sont cohérentes, "
             "ce qui indique qu'il ne commet pas de grosses erreurs isolées.")
     section("Classement détaillé")
@@ -1530,7 +1539,9 @@ def page_previsions(df: pd.DataFrame) -> None:
     entete("target", "Prévisions", "À quoi s'attendre dans les prochaines semaines ?",
            "Projection du nombre de cas suspects par semaine, avec une fourchette d'incertitude et un niveau d'alerte.")
     callout("info", "Comment lire ces prévisions ?",
-            "<ul><li>Modèle : <b>SARIMA</b>, une méthode statistique qui prolonge la courbe en tenant compte de l'historique.</li>"
+            "<ul><li><b>MM3</b> (moyenne mobile d'ordre 3) : la prévision est la moyenne des 3 dernières semaines, "
+            "réinjectée de proche en proche. C'est le modèle le plus précis sur nos données (RMSE 8.46).</li>"
+            "<li><b>SARIMA</b> : modèle statistique plus avancé, qui tient compte de la tendance et des cycles.</li>"
             "<li>La zone dorée est un <b>intervalle de confiance à 95 %</b> : la réalité devrait s'y situer dans la grande majorité des cas.</li>"
             "<li>Plus l'horizon est lointain, plus l'incertitude augmente.</li></ul>")
     bloc_previsions(df, "prev", detail=True)
@@ -1614,6 +1625,22 @@ def page_rapport(df: pd.DataFrame) -> None:
             st.text(rapport)
 
 
+def page_guide() -> None:
+    entete("help", "Guide & glossaire", "Comprendre les chiffres et les graphiques",
+           "Un glossaire simple pour lire le tableau de bord sans être spécialiste.")
+    section("Glossaire", "Les mots utilisés dans l'application, expliqués simplement.")
+    for k, v in GLOSSAIRE:
+        ecrire(f'<div class="gl"><div class="k">{k}</div><div class="v">{v}</div></div>')
+    section("Bonnes pratiques de lecture", "Quelques repères pour interpréter sans se tromper.")
+    carte_lecture("À garder en tête", [
+        "Un <b>cas suspect</b> n'est pas un <b>cas confirmé</b> : la différence est le test PCR.",
+        "Une <b>semaine sans cas déclaré</b> ne signifie pas forcément zéro cas : cela peut être un défaut de déclaration.",
+        "Les <b>dernières semaines</b> sont souvent incomplètes (les déclarations arrivent avec du retard).",
+        "Une <b>prévision</b> est une estimation : la zone d'incertitude est là pour le rappeler.",
+        "Sur moins de deux ans de données, on ne peut pas conclure à une <b>saisonnalité annuelle</b>.",
+    ])
+
+
 GLOSSAIRE = [
     ("Cas suspect", "Personne présentant des signes pouvant évoquer la Mpox (fièvre, éruption…). Son statut n'est pas encore confirmé."),
     ("Cas confirmé (PCR positif)", "Cas dont le test de laboratoire (PCR) a détecté le virus."),
@@ -1621,121 +1648,54 @@ GLOSSAIRE = [
     ("Semaine épidémiologique", "Semaine numérotée utilisée par les services de santé pour comparer les périodes. Ici, chaque semaine est repérée par son lundi."),
     ("Moyenne et médiane", "La moyenne est la somme divisée par le nombre de semaines ; la médiane est la valeur « du milieu ». Quand quelques semaines sont très chargées, la médiane décrit mieux la semaine typique."),
     ("Moyenne mobile (4 semaines)", "Moyenne glissante qui lisse les à-coups pour faire ressortir la direction générale."),
+    ("MM3 (moyenne mobile ordre 3)", "Modèle de prévision simple : on prévoit qu'une semaine ressemblera à la moyenne des 3 dernières semaines. C'est le modèle le plus précis de notre évaluation (RMSE 8.46)."),
     ("Tendance de fond", "Évolution durable (hausse ou baisse) une fois les variations de court terme retirées."),
     ("Prévision", "Estimation du nombre de cas des prochaines semaines, calculée à partir de l'historique. Ce n'est pas une certitude."),
     ("Intervalle de confiance à 95 %", "Fourchette autour de la prévision dans laquelle la réalité devrait se situer dans environ 95 % des cas si le modèle est fiable."),
     ("SARIMA", "Modèle statistique de séries temporelles : il prolonge la courbe en tenant compte de la tendance et des cycles passés."),
-    ("RMSE et MAE", "Deux mesures de l'erreur d'un modèle, en cas par semaine. Plus elles sont petites, meilleur est le modèle. Le RMSE pénalise davantage les grosses erreurs."),
-    ("Valeurs manquantes", "Informations non renseignées dans les fiches de déclaration. Elles sont traitées selon des règles prudentes et documentées."),
+    ("RMSE et MAE", "Deux mesures de l'erreur d'un modèle : plus elles sont petites, plus la prévision est proche de la réalité."),
+    ("AIC", "Mesure de la qualité d'ajustement d'un modèle à l'historique : plus petit = mieux."),
 ]
 
 
-def page_guide(df: pd.DataFrame) -> None:
-    entete("help", "Aide", "Guide de lecture et glossaire",
-           "Tout ce qu'il faut savoir pour utiliser cette application sans connaissance technique.")
-    section("Utiliser l'application en 3 étapes")
-    c1, c2, c3 = st.columns(3)
-    for col, (n, titre, txt) in zip((c1, c2, c3), [
-        (1, "Commencer par la synthèse", "La page « Synthèse » donne la situation actuelle, les chiffres clés et ce qu'il faut faire."),
-        (2, "Approfondir dans le tableau de bord", "Filtrez par période, région ou sexe, puis choisissez une section d'analyse."),
-        (3, "Anticiper et partager", "La page « Prévisions » projette les prochaines semaines ; la page « Rapport » permet de tout télécharger."),
-    ]):
-        with col:
-            ecrire(f'<div class="card nav"><div class="ic" style="font-family:Fraunces,serif;font-size:1.6rem;font-weight:700">{n}</div>'
-                   f'<div class="h">{titre}</div><p>{txt}</p></div>')
-
-    section("Ce qu'il faut garder en tête", "Pour interpréter les chiffres avec justesse.")
-    pcr = statut_pcr(df)
-    npos = int((pcr == "Positif").sum()) if pcr is not None else None
-    callout("warn", "Cas suspects ≠ personnes malades",
-            "Les chiffres comptent les cas suspects. La grande majorité d'entre eux se révèle négative au test."
-            + (f" Ici, seuls <b>{npos}</b> cas sont confirmés sur <b>{fmt(len(df))}</b>." if npos is not None else ""))
-    callout("warn", "Les dernières semaines sont provisoires", "Les déclarations arrivent avec un délai : les chiffres des semaines les plus récentes peuvent encore augmenter.")
-    callout("warn", "Une prévision est une estimation", "Elle est d'autant moins précise que l'horizon est lointain. Utilisez-la pour anticiper, pas pour affirmer.")
-    callout("info", "Petits effectifs", "Quand un groupe compte peu de cas (par exemple une petite région ou les cas confirmés), les pourcentages varient beaucoup d'une semaine à l'autre.")
-
-    section("Comment le niveau de situation est évalué")
-    table_html(
-        ["Variation des 4 dernières semaines vs les 4 précédentes", "Niveau affiché"],
-        [["+50 % ou plus", pastille("Hausse marquée", "bad")],
-         ["De +20 % à +50 %", pastille("Hausse à surveiller", "warn")],
-         ["Entre −20 % et +20 %", pastille("Situation stable", "info")],
-         ["−20 % ou moins", pastille("Tendance à la baisse", "ok")]])
-    legende("ces seuils sont des repères de lecture adoptés dans cette application, pas des seuils officiels. "
-            "Pour les prévisions, le niveau compare la prévision moyenne à la moyenne historique (alerte au-delà de 1,5 fois).")
-
-    section("Glossaire")
-    for k, v in GLOSSAIRE:
-        ecrire(f'<div class="gl"><div class="k">{k}</div><div class="v">{v}</div></div>')
-
-    section("D'où viennent les données ?")
-    callout("info", "Source et méthode",
-            "Les données proviennent de la surveillance nationale (plateforme DHIS2) : une ligne par cas suspect. "
-            "Les cas sont regroupés par semaine pour construire la courbe d'évolution, puis analysés et utilisés pour les prévisions. "
-            "Aucune donnée individuelle n'est affichée dans cette application : seuls des totaux et des répartitions le sont.")
-
-
 # ==========================================================
-# 11. PROGRAMME PRINCIPAL
+# 11. APPLICATION
 # ==========================================================
 
-
-def bloquer_traduction_navigateur() -> None:
-    """Déclare la page en français et interdit la traduction automatique du navigateur
-    (Chrome Translate modifie le DOM et provoque l'erreur « removeChild » de React)."""
-    import streamlit.components.v1 as components
-    components.html(
-        """<script>
-        try {
-          const d = window.parent.document;
-          d.documentElement.setAttribute('lang', 'fr');
-          d.documentElement.setAttribute('translate', 'no');
-          d.documentElement.classList.add('notranslate');
-          d.body.setAttribute('translate', 'no');
-          if (!d.querySelector('meta[name="google"]')) {
-            const m = d.createElement('meta'); m.name = 'google'; m.content = 'notranslate';
-            d.head.appendChild(m);
-          }
-        } catch (e) {}
-        </script>""", height=0)
+def barre_laterale(df: pd.DataFrame | None) -> str:
+    with st.sidebar:
+        ecrire(f'<div class="brand"><div class="lg">{icone("virus", 24, "#0E1A33")}</div>'
+               '<div><div class="n">Mpox · Sénégal</div><div class="s">Surveillance nationale</div></div></div>')
+        page = st.radio("Navigation", [p[0] for p in PAGES], label_visibility="collapsed", key="nav",
+                        format_func=lambda x: x)
+        st.markdown('<div class="slab">Affichage</div>', unsafe_allow_html=True)
+        st.toggle("Mode sombre", value=SOMBRE_ACTIF, key="mode_sombre")
+        if df is not None:
+            st.markdown('<div class="slab">Base de données</div>', unsafe_allow_html=True)
+            obs, cpl = series_hebdo(df)
+            nreg = df["Nom_region"].nunique() if "Nom_region" in df.columns else 0
+            ecrire(
+                f'<div class="sbcard">'
+                f'<div class="r"><span>Cas suspects</span><span>{fmt(len(df))}</span></div>'
+                f'<div class="r"><span>Semaines suivies</span><span>{fmt(len(cpl))}</span></div>'
+                f'<div class="r"><span>Régions</span><span>{fmt(nreg)}</span></div>'
+                f'<div class="r"><span>Dernière semaine</span><span>{fdate(cpl.index.max()) if len(cpl) else "—"}</span></div>'
+                f'</div>')
+        st.markdown('<div class="sbfoot">Application de surveillance Mpox · Sénégal<br>'
+                    'Données DHIS2 · Modèles MM3 & SARIMA</div>', unsafe_allow_html=True)
+    return page
 
 
 def main() -> None:
     injecter_css()
-    bloquer_traduction_navigateur()
-
-    sb = st.sidebar
-    sb.markdown(
-        f'<div class="brand"><div class="lg">{icone("virus", 24, "#0E1A33")}</div>'
-        f'<div><div class="n">Mpox Sénégal</div><div class="s">Surveillance</div></div></div>',
-        unsafe_allow_html=True)
-    sb.markdown('<div class="slab">Navigation</div>', unsafe_allow_html=True)
-    page = sb.radio("Navigation", [p for p, _ in PAGES], label_visibility="collapsed", key="nav")
-
     df, erreur = charger_donnees()
-
-    if df is not None:
-        obs, cpl = series_hebdo(df)
-        lignes = [("Cas suspects", fmt(len(df)))]
-        if "Nom_region" in df.columns:
-            lignes.append(("Régions", fmt(df["Nom_region"].nunique())))
-        if not cpl.empty:
-            lignes.append(("Semaines suivies", fmt(len(cpl))))
-            lignes.append(("Période", f"{fdate(cpl.index.min(), True)} → {fdate(cpl.index.max(), True)}"))
-        lignes.append(("Meilleur modèle", f"{MEILLEUR['Modèle']} (RMSE {MEILLEUR['RMSE']:.2f})"))
-        sb.markdown('<div class="slab">Aperçu des données</div>', unsafe_allow_html=True)
-        ecrire_sb = "".join(f'<div class="r"><span>{a}</span><span>{b}</span></div>' for a, b in lignes)
-        sb.markdown(f'<div class="sbcard">{ecrire_sb}</div>', unsafe_allow_html=True)
-
-    sb.markdown('<div class="slab">Affichage</div>', unsafe_allow_html=True)
-    sb.toggle("Mode sombre", key="mode_sombre")
-    sb.markdown(f'<div class="sbfoot">© {datetime.now().year} — Etud_L3 SID<br>Données de surveillance · usage interne</div>',
-                unsafe_allow_html=True)
+    page = barre_laterale(df)
 
     if df is None:
-        entete("alert", "Données indisponibles", "L'application ne trouve pas la base de données",
-               "Vérifiez que le fichier Excel de la base est bien présent à côté de l'application.")
-        callout("bad", "Impossible de charger les données", erreur or "Erreur inconnue.")
+        entete("alert", "Erreur", "Impossible de charger les données", erreur or "")
+        callout("bad", "Que faire ?",
+                "<ul><li>Vérifier qu'un fichier Excel contenant « mpox » dans son nom est bien présent à côté du script.</li>"
+                "<li>Ouvrir le fichier pour vérifier qu'il n'est pas corrompu ou protégé.</li></ul>")
         return
 
     if page == "Synthèse":
@@ -1752,8 +1712,8 @@ def main() -> None:
         page_spatiale(df)
     elif page == "Rapport":
         page_rapport(df)
-    else:
-        page_guide(df)
+    elif page == "Guide & glossaire":
+        page_guide()
 
 
 if __name__ == "__main__":

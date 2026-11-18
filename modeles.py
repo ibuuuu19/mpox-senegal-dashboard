@@ -186,3 +186,57 @@ def entrainer_prophet(series, horizon=8):
     except Exception as e:
         print(f"Erreur Prophet: {e}")
         return None
+    
+# -*- coding: utf-8 -*-
+"""
+Module de prévision - ajout du modèle MM3 (Moyenne Mobile d'ordre 3)
+"""
+def entrainer_mm3(serie: pd.Series, horizon: int = 8, fenetre: int = 3) -> dict | None:
+    """
+    Prévision par moyenne mobile d'ordre 3 (MM3).
+    
+    Principe : la prévision de la semaine t+1 est la moyenne des 3 dernières
+    semaines observées. Pour les semaines suivantes, on intègre progressivement
+    les valeurs prévues dans le calcul (moyenne mobile "récursive").
+    """
+    serie = pd.Series(serie).dropna().astype(float)
+    if len(serie) < fenetre:
+        return None
+    
+    # --- Prévision récursive ---
+    historique = list(serie.values)
+    prev = []
+    for _ in range(horizon):
+        valeur = float(np.mean(historique[-fenetre:]))
+        prev.append(valeur)
+        historique.append(valeur)  # on réinjecte la prévision
+    
+    prev = np.array(prev, dtype=float)
+    
+    # --- Intervalle de confiance simple ---
+    # Basé sur l'écart-type des erreurs de la MM3 sur l'historique
+    erreurs = []
+    for i in range(fenetre, len(serie)):
+        pred_i = np.mean(serie.values[i - fenetre:i])
+        erreurs.append(serie.values[i] - pred_i)
+    ecart = float(np.std(erreurs)) if erreurs else float(np.std(serie.values))
+    
+    # L'incertitude croît avec l'horizon (racine du pas)
+    pas = np.arange(1, horizon + 1)
+    marge = 1.96 * ecart * np.sqrt(pas)  # ~95 %
+    
+    bas = np.clip(prev - marge, 0, None)
+    haut = prev + marge
+    
+    # --- Dates futures (pas hebdomadaire) ---
+    derniere = pd.Timestamp(serie.index[-1])
+    dates = pd.date_range(derniere + pd.Timedelta(weeks=1), periods=horizon, freq="7D")
+    
+    return {
+        "forecast": prev,
+        "lower": bas,
+        "upper": haut,
+        "dates": list(dates),
+        "methode": f"Moyenne mobile d'ordre {fenetre} (MM{fenetre})",
+        "order": (fenetre,),  # pour compatibilité affichage
+    }
