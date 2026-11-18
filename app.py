@@ -3,22 +3,6 @@
 ==========================================================
  DASHBOARD MPOX · SÉNÉGAL  —  Refonte « Premium » + MM3
 ==========================================================
- Application de surveillance pensée pour des décideurs :
- - langage simple, explications sous chaque graphique ;
- - synthèse en un coup d'œil, puis un TABLEAU DE BORD qui
-   regroupe toutes les analyses réalisées dans le projet ;
- - thème clair (par défaut) ou sombre ;
- - prévision : MM3 (meilleur modèle), SARIMA lissé, SARIMA brut.
-
- Fichiers attendus à côté de ce script :
-   - le fichier Excel de la base (nom contenant « mpox »)
-   - modeles.py            (entrainer_sarima, entrainer_sarima_lisse, entrainer_mm3)
-   - pdf_generator_v6.py   (generer_pdf_v6)   [facultatif]
-   - rapport_final_mpox.txt                    [facultatif]
-
- Bibliothèques : streamlit, pandas, numpy, plotly, openpyxl,
- statsmodels (pour la décomposition de la série et SARIMA).
-==========================================================
 """
 from __future__ import annotations
 
@@ -47,18 +31,17 @@ st.set_page_config(
 # 1. PARAMÈTRES
 # ==========================================================
 
-# False : le modèle de prévision est entraîné sur les semaines AVEC cas.
-# True  : il est entraîné sur la série hebdomadaire complète (semaines sans
-#         cas = 0). Recommandé pour MM3 (plus stable).
 PREVISION_SUR_SERIE_COMPLETE = True
 
-# Résultats de l'étape d'évaluation des modèles (issus du notebook de soutenance)
-# Le tableau montre que MM3 est le meilleur modèle à court terme (S+1).
+# Résultats exacts du notebook de soutenance (Tableau V.1)
 MODELES_DATA = {
-    "Modèle": ["MM3", "Naïf", "SARIMA", "ARIMAX", "Prophet"],
-    "RMSE": [8.46, 9.09, 8.80, 9.20, 10.18], 
-    "MAE":  [5.71, 6.12, 6.10, 6.50, 8.75],
-    "AIC":  [None, None, 318.59, 322.61, None],
+    "Modèle": ["MM3", "Naïf", "SES", "ARIMA"],
+    "RMSE": [8.46, 9.09, 9.16, 10.07],
+    "MAE": [5.71, 6.12, 6.03, 6.45],
+    "Biais": [2.88, 1.65, 1.74, 1.90],
+    "MAPE": [138.5, 132.2, 131.1, 135.2],
+    "sMAPE": [63.1, 78.8, 69.0, 70.9],
+    "AIC": [None, None, None, 318.59],
 }
 MODELES_EVAL = pd.DataFrame(MODELES_DATA)
 MEILLEUR = MODELES_EVAL.sort_values("RMSE").iloc[0]
@@ -96,7 +79,7 @@ LESIONS = [
 COLONNES_TECH = ["Semaine_Num", "Annee_Num", "Date", "Nb_Cas"]
 
 # ==========================================================
-# 2. ICÔNES (SVG intégrés, style trait)
+# 2. ICÔNES
 # ==========================================================
 
 _ICONES = {
@@ -153,7 +136,7 @@ def _masque_css(nom: str) -> str:
 
 
 # ==========================================================
-# 3. THÈMES (clair / sombre)
+# 3. THÈMES
 # ==========================================================
 
 CLAIR = dict(
@@ -377,7 +360,6 @@ _COMPTEUR = itertools.count()
 
 
 def ecrire(html: str) -> None:
-    """Affiche du HTML en retirant l'indentation (évite le rendu « code » de Markdown)."""
     propre = "\n".join(ligne.strip() for ligne in html.strip().splitlines() if ligne.strip())
     st.markdown(propre, unsafe_allow_html=True)
 
@@ -483,7 +465,6 @@ def aller_a(page: str) -> None:
 # ==========================================================
 
 def _lundi_iso(annee, semaine):
-    """Lundi de la semaine ISO (convention des semaines épidémiologiques DHIS2)."""
     try:
         return pd.Timestamp(date.fromisocalendar(int(annee), int(semaine), 1))
     except (ValueError, TypeError, OverflowError):
@@ -518,7 +499,6 @@ def charger_donnees():
 
 
 def series_hebdo(df: pd.DataFrame):
-    """Série observée (semaines avec au moins un cas) et série complète (semaines sans cas = 0)."""
     if "Date" not in df.columns:
         return pd.Series(dtype=int), pd.Series(dtype=int)
     d = df.dropna(subset=["Date"])
@@ -564,7 +544,6 @@ def tranches_age(ages: pd.Series) -> pd.Series:
 
 
 def tendance_recente(cpl: pd.Series):
-    """Compare la moyenne des 4 dernières semaines à celle des 4 précédentes."""
     if len(cpl) < 8:
         return None
     dern, prec = float(cpl.iloc[-4:].mean()), float(cpl.iloc[-8:-4].mean())
@@ -807,7 +786,6 @@ def fig_pcr(statut: pd.Series):
 
 
 def decomposer(cpl: pd.Series):
-    """Décomposition additive de la série complète (cycle de 4 semaines)."""
     if len(cpl) < 8:
         return None
     from statsmodels.tsa.seasonal import seasonal_decompose
@@ -886,7 +864,7 @@ def fig_manquantes(df: pd.DataFrame):
 
 
 # ==========================================================
-# 7. TEXTES D'INTERPRÉTATION (calculés sur les données)
+# 7. TEXTES D'INTERPRÉTATION
 # ==========================================================
 
 def phrase_tendance(t: dict) -> str:
@@ -1005,12 +983,9 @@ def bloc_previsions(df: pd.DataFrame, prefixe: str, detail: bool) -> None:
     with c1:
         horizon = st.slider("Combien de semaines à l'avance ?", 1, 12, 8, key=f"{prefixe}_h")
     with c2:
-        modele = st.selectbox(
-            "Modèle de prévision",
-            ["MM3 (moyenne mobile, ordre 3)", "SARIMA (lissé)", "SARIMA (brut)"],
-            key=f"{prefixe}_m",
-            help="MM3 : moyenne des 3 dernières semaines, simple et robuste. "
-                 "SARIMA (lissé) atténue les à-coups avant de projeter.")
+        # On force le modèle MM3 (meilleur modèle selon l'évaluation)
+        modele = "MM3 (moyenne mobile, ordre 3)"
+        st.info("**Modèle utilisé : MM3** (Moyenne Mobile d'ordre 3) — *Le plus performant selon l'évaluation des modèles.*")
 
     with st.spinner("Calcul de la prévision…"):
         out = calculer_prevision(serie, int(horizon), modele)
@@ -1073,7 +1048,7 @@ def ecrire_alerte(niv: dict, moy_prev: float) -> None:
 
 
 # ==========================================================
-# 9. SECTIONS D'ANALYSE (réutilisées par les pages et le tableau de bord)
+# 9. SECTIONS D'ANALYSE
 # ==========================================================
 
 def sec_evolution(d: pd.DataFrame, obs: pd.Series, cpl: pd.Series) -> None:
@@ -1282,19 +1257,30 @@ def sec_modeles() -> None:
         legende("le MAE est l'écart moyen entre la prévision et la réalité. Il traite toutes les erreurs de la même façon.")
     callout("ok", f"{m['Modèle']} est le modèle retenu",
             f"Avec une erreur typique de <b>{m['RMSE']:.2f} cas par semaine</b> (RMSE) et de <b>{m['MAE']:.2f}</b> (MAE), "
-            "il fait mieux que tous les autres, y compris les modèles plus complexes. Ses deux mesures d'erreur sont cohérentes, "
-            "ce qui indique qu'il ne commet pas de grosses erreurs isolées.")
-    section("Classement détaillé")
+            "il fait mieux que tous les autres. Ses mesures d'erreur sont cohérentes.")
+    section("Classement détaillé (Tableau V.1)")
     d = MODELES_EVAL.sort_values("RMSE").reset_index(drop=True)
     lignes = []
     for i, r in d.iterrows():
         rel = r["RMSE"] / m["RMSE"]
-        verdict = pastille("Meilleur", "gold") if i == 0 else (pastille("Bon", "ok") if rel < 1.5 else (pastille("Moyen", "warn") if rel < 2.8 else pastille("Faible", "bad")))
-        lignes.append([i + 1, f"<b>{r['Modèle']}</b>", f"{r['RMSE']:.2f}", f"{r['MAE']:.2f}",
-                       "—" if pd.isna(r["AIC"]) else f"{r['AIC']:.2f}", verdict])
-    table_html(["Rang", "Modèle", "RMSE", "MAE", "AIC", "Verdict"], lignes, num_cols=(0, 2, 3, 4))
-    legende("le <b>AIC</b> mesure la qualité d'ajustement aux données passées (plus petit = mieux, surtout utile pour comparer des modèles proches) ; "
-            "RMSE et MAE mesurent la qualité des prévisions.")
+        verdict = pastille("Meilleur", "gold") if i == 0 else (pastille("Bon", "ok") if rel < 1.5 else pastille("Moyen", "warn"))
+        lignes.append([
+            i + 1, 
+            f"<b>{r['Modèle']}</b>", 
+            f"{r['RMSE']:.2f}", 
+            f"{r['MAE']:.2f}",
+            f"{r['Biais']:.2f}",
+            f"{r['MAPE']:.1f} %",
+            f"{r['sMAPE']:.1f} %",
+            verdict
+        ])
+    table_html(
+        ["Rang", "Modèle", "RMSE", "MAE", "Biais", "MAPE", "sMAPE", "Verdict"], 
+        lignes, 
+        num_cols=(0, 2, 3, 4, 5, 6)
+    )
+    legende("Le <b>RMSE</b> et le <b>MAE</b> mesurent l'erreur absolue. Le <b>Biais</b> indique si le modèle a tendance à surestimer (positif) ou sous-estimer (négatif). "
+            "Le <b>MAPE</b> et le <b>sMAPE</b> sont des erreurs en pourcentage.")
 
 
 def sec_qualite(df: pd.DataFrame) -> None:
@@ -1541,7 +1527,6 @@ def page_previsions(df: pd.DataFrame) -> None:
     callout("info", "Comment lire ces prévisions ?",
             "<ul><li><b>MM3</b> (moyenne mobile d'ordre 3) : la prévision est la moyenne des 3 dernières semaines, "
             "réinjectée de proche en proche. C'est le modèle le plus précis sur nos données (RMSE 8.46).</li>"
-            "<li><b>SARIMA</b> : modèle statistique plus avancé, qui tient compte de la tendance et des cycles.</li>"
             "<li>La zone dorée est un <b>intervalle de confiance à 95 %</b> : la réalité devrait s'y situer dans la grande majorité des cas.</li>"
             "<li>Plus l'horizon est lointain, plus l'incertitude augmente.</li></ul>")
     bloc_previsions(df, "prev", detail=True)
