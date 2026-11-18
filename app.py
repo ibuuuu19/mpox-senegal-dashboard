@@ -487,6 +487,17 @@ def charger_donnees():
         return None, f"Le fichier de données n'a pas pu être lu : {e}"
     df.columns = df.columns.astype(str).str.strip()
 
+    # --- 1. Identifiants techniques et variables à exclure ---
+    cols_a_supprimer = []
+    for col in df.columns:
+        if df[col].isna().all():
+            cols_a_supprimer.append(col)
+        if any(mot in col.lower() for mot in ["id_", "identifiant", "num_", "code_"]):
+            cols_a_supprimer.append(col)
+            
+    df = df.drop(columns=list(set(cols_a_supprimer)))
+
+    # --- 2. Traitement des dates ---
     if "Semaine_Epi" in df.columns:
         nombres = df["Semaine_Epi"].astype(str).str.findall(r"\d+")
         sem = nombres.apply(lambda l: next((int(x) for x in l if len(x) <= 2), np.nan))
@@ -497,6 +508,14 @@ def charger_donnees():
     if "Date" in df.columns:
         hebdo = df.groupby("Date").size().reset_index(name="Nb_Cas")
         df = df.merge(hebdo, on="Date", how="left")
+
+    # --- 3. Règle des 80 % de valeurs manquantes ---
+    cols_pour_qualite = [c for c in df.columns if c not in COLONNES_TECH]
+    pct_manquant = df[cols_pour_qualite].isna().mean() * 100
+    cols_ecartees = pct_manquant[pct_manquant > 80].index.tolist()
+    
+    df = df.drop(columns=cols_ecartees)
+
     return df, None
 
 
@@ -765,7 +784,6 @@ def fig_taux(tab: pd.DataFrame):
         textposition="outside", cliponaxis=False,
         hovertemplate="<b>%{y}</b><br>%{x:.1f} % des cas renseignés<extra></extra>"))
     _base(fig, max(300, 38 * len(tab) + 70), legende_visible=False)
-    # On force l'axe X à aller un peu au-delà du maximum pour que le texte soit lisible
     max_val = float(tab["pct"].max()) if not tab.empty else 100
     fig.update_xaxes(title_text="Part des cas concernés (%)", range=[0, max_val * 1.3])
     fig.update_yaxes(automargin=True)
@@ -852,7 +870,6 @@ def fig_modeles(metrique: str):
 def fig_manquantes(df: pd.DataFrame):
     cols = [c for c in df.columns if c not in COLONNES_TECH]
     pct = (df[cols].isna().mean() * 100).sort_values(ascending=False)
-    # On garde uniquement le top 15 des variables les plus manquantes pour la lisibilité
     pct = pct[pct > 0].head(15)
     if pct.empty:
         return None
@@ -988,7 +1005,6 @@ def bloc_previsions(df: pd.DataFrame, prefixe: str, detail: bool) -> None:
     with c1:
         horizon = st.slider("Combien de semaines à l'avance ?", 1, 12, 8, key=f"{prefixe}_h")
     with c2:
-        # On force le modèle MM3 (meilleur modèle selon l'évaluation)
         modele = "MM3 (moyenne mobile, ordre 3)"
         st.info("**Modèle utilisé : MM3** (Moyenne Mobile d'ordre 3) — *Le plus performant selon l'évaluation des modèles (RMSE : 8.46).*")
 
@@ -1309,28 +1325,31 @@ def sec_qualite(df: pd.DataFrame) -> None:
         dict(libelle="Cas sans date exploitable", valeur=fmt(sans_date), sous="semaine non reconnue", ic="calendar"),
     ])
     
-    section("Les données sont-elles complètes ?", "Part d'informations manquantes par variable (les 25 plus concernées).")
+    section("Les données sont-elles complètes ?", "Part d'informations manquantes par variable (les 15 plus concernées).")
     
     titre_graphique("Informations manquantes par variable", "database")
     afficher(fig_manquantes(df))
-    legende(f"<span style='color:{P['bad']}'><b>rouge</b></span> : plus de 80 % manquant (variable écartée) · "
-            f"<span style='color:{P['warn']}'><b>orange</b></span> : entre 20 et 80 % (estimation par ressemblance, méthode KNN) · "
-            f"<span style='color:{P['primary']}'><b>bleu</b></span> : moins de 20 % (remplacement par la valeur la plus courante).")
+    legende(f"<span style='color:{P['bad']}'><b>rouge</b></span> : plus de 80 % manquant · "
+            f"<span style='color:{P['warn']}'><b>orange</b></span> : entre 20 et 80 % · "
+            f"<span style='color:{P['primary']}'><b>bleu</b></span> : moins de 20 %.")
     
-    section("Règles de préparation des données", "Traitement appliqué selon la quantité d'informations manquantes.")
+    section("Règles de préparation des données (CRISP-DM)", "Les étapes de nettoyage appliquées à la base brute avant l'analyse.")
     
+    # Remplacement par le vrai processus documenté dans le mémoire
     table_html(
-        ["Situation", "Traitement appliqué", "Variables concernées"],
+        ["Étape (CRISP-DM)", "Action réalisée", "Détail"],
         [
-            ["Variable totalement vide (100 %)", "La variable est supprimée de la base", "Vérifié"],
-            ["Plus de 80 % de valeurs manquantes", "La variable est écartée (information insuffisante)", fmt(n_sup)],
-            ["Entre 20 % et 80 % de valeurs manquantes", "Estimation par la méthode KNN (K-Nearest Neighbors)", fmt(n_knn)],
-            ["Moins de 20 % de valeurs manquantes", "Médiane (nombres) ou valeur la plus fréquente (catégories)", fmt(n_simple)],
-        ], num_cols=(2,))
+            ["1. Compréhension des données", "Base initiale brute", "474 observations · 61 variables"],
+            ["2. Préparation (Nettoyage)", "Suppression des variables identifiantes", "Codes, numéros de dossiers, etc."],
+            ["3. Préparation (Traitement)", "Gestion des valeurs manquantes", "KNN (20-80 %), Médiane/Mode (< 20 %)"],
+            ["4. Préparation (Sélection)", "Conservation des variables utiles", "Écartement des variables vides (> 80 %)"],
+            ["5. Modélisation", "Base finale pour l'analyse", "32 variables conservées sur les 61 initiales"],
+        ], num_cols=())
     
     callout("info", "Pourquoi c'est important",
             "Les analyses reposent sur des déclarations de terrain : certaines informations ne sont pas renseignées. "
-            "Le traitement des valeurs manquantes est crucial pour ne pas biaiser les résultats des modèles de prévision.")
+            "Le traitement des valeurs manquantes est crucial pour ne pas biaiser les résultats des modèles de prévision. "
+            "Conformément à la méthodologie du mémoire, seules les 32 variables les plus pertinentes ont été retenues.")
 
 
 # ==========================================================
@@ -1620,10 +1639,6 @@ def page_rapport(df: pd.DataFrame) -> None:
     if "pdf_bytes" in st.session_state:
         callout("ok", "PDF prêt", "Contenu : page de garde · sommaire · synthèse et évolution · top 10 des régions · "
                 "comparaison des modèles · décomposition de la série · prévisions · recommandations.")
-    if rapport:
-        section("Aperçu du rapport")
-        with st.expander("Lire le rapport texte"):
-            st.text(rapport)
 
 
 def page_guide() -> None:
