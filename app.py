@@ -2,6 +2,7 @@
 """
 ==========================================================
  DASHBOARD MPOX · SÉNÉGAL  —  Refonte « Premium » + MM3
+ Conforme au mémoire SID3 (CRISP-DM, 32 variables, MM3)
 ==========================================================
 """
 from __future__ import annotations
@@ -57,6 +58,7 @@ PAGES = [
     ("Guide & glossaire", "help"),
 ]
 
+# Noms de colonnes adaptés à votre base
 SYMPTOMES = [
     ("Fievre", "Fièvre"),
     ("Eruption_cutaneo_muqueuse", "Éruption cutanée / muqueuse"),
@@ -759,11 +761,13 @@ def fig_taux(tab: pd.DataFrame):
         return None
     fig = go.Figure(go.Bar(
         y=tab["lib"].tolist(), x=tab["pct"].tolist(), orientation="h", marker_color=P["primary"],
-        text=[f"{p:.0f} %  ({o}/{n})" for p, o, n in zip(tab["pct"], tab["oui"], tab["n"])],
+        text=[f"{p:.1f} %  ({o}/{n})" for p, o, n in zip(tab["pct"], tab["oui"], tab["n"])],
         textposition="outside", cliponaxis=False,
         hovertemplate="<b>%{y}</b><br>%{x:.1f} % des cas renseignés<extra></extra>"))
     _base(fig, max(300, 38 * len(tab) + 70), legende_visible=False)
-    fig.update_xaxes(title_text="Part des cas concernés (%)", range=[0, 118])
+    # On force l'axe X à aller un peu au-delà du maximum pour que le texte soit lisible
+    max_val = float(tab["pct"].max()) if not tab.empty else 100
+    fig.update_xaxes(title_text="Part des cas concernés (%)", range=[0, max_val * 1.3])
     fig.update_yaxes(automargin=True)
     return fig
 
@@ -848,7 +852,8 @@ def fig_modeles(metrique: str):
 def fig_manquantes(df: pd.DataFrame):
     cols = [c for c in df.columns if c not in COLONNES_TECH]
     pct = (df[cols].isna().mean() * 100).sort_values(ascending=False)
-    pct = pct[pct > 0].head(25)
+    # On garde uniquement le top 15 des variables les plus manquantes pour la lisibilité
+    pct = pct[pct > 0].head(15)
     if pct.empty:
         return None
     pct = pct.iloc[::-1]
@@ -926,7 +931,7 @@ def lecture_patients(d: pd.DataFrame) -> list[str]:
         vc = sx.dropna().value_counts()
         if len(vc):
             tot = vc.sum()
-            pts.append(" · ".join(f"<b>{k}</b> : {v / tot * 100:.0f} %" for k, v in vc.items()) + " des cas.")
+            pts.append(" · ".join(f"<b>{k}</b> : {v / tot * 100:.1f} %" for k, v in vc.items()) + " des cas.")
     return pts
 
 
@@ -985,7 +990,7 @@ def bloc_previsions(df: pd.DataFrame, prefixe: str, detail: bool) -> None:
     with c2:
         # On force le modèle MM3 (meilleur modèle selon l'évaluation)
         modele = "MM3 (moyenne mobile, ordre 3)"
-        st.info("**Modèle utilisé : MM3** (Moyenne Mobile d'ordre 3) — *Le plus performant selon l'évaluation des modèles.*")
+        st.info("**Modèle utilisé : MM3** (Moyenne Mobile d'ordre 3) — *Le plus performant selon l'évaluation des modèles (RMSE : 8.46).*")
 
     with st.spinner("Calcul de la prévision…"):
         out = calculer_prevision(serie, int(horizon), modele)
@@ -1130,7 +1135,7 @@ def sec_patients(d: pd.DataFrame) -> None:
         vc = sexe.dropna().value_counts()
         for k in ["Masculin", "Féminin"]:
             if k in vc.index:
-                items.append(dict(libelle=k, valeur=f"{vc[k] / vc.sum() * 100:.0f} %", sous=f"{int(vc[k])} cas", ic="users"))
+                items.append(dict(libelle=k, valeur=f"{vc[k] / vc.sum() * 100:.1f} %", sous=f"{int(vc[k])} cas", ic="users"))
     if items:
         rangee_kpi(items[:4])
     section("Qui est touché ?", "Âge et sexe des personnes concernées.")
@@ -1177,7 +1182,7 @@ def sec_clinique(d: pd.DataFrame) -> None:
                         for k, v in vc.items()], num_cols=(1, 2))
             callout("info", "À savoir",
                     "Un <b>cas suspect</b> est une personne présentant des signes évocateurs ; seul le <b>test PCR</b> "
-                    "confirme la maladie. Avec un petit nombre de cas confirmés, les pourcentages sont à interpréter avec prudence.")
+                    "confirme la maladie. Avec un petit nombre de cas confirmés (1,9 % de positivité), les pourcentages sont à interpréter avec prudence.")
     section("Signes cliniques", "Quels symptômes sont les plus fréquents parmi les cas ?")
     c1, c2 = st.columns(2)
     with c1:
@@ -1286,35 +1291,46 @@ def sec_modeles() -> None:
 def sec_qualite(df: pd.DataFrame) -> None:
     cols = [c for c in df.columns if c not in COLONNES_TECH]
     pct = df[cols].isna().mean() * 100
+    
     n_sup = int((pct > 80).sum())
     n_knn = int(((pct >= 20) & (pct <= 80)).sum())
     n_simple = int(((pct > 0) & (pct < 20)).sum())
     n_ok = int((pct == 0).sum())
-    complet = 100 - float(pct.mean())
+    
+    cols_avec_valeurs = [c for c in cols if df[c].notna().any()]
+    complet = 100 - float(df[cols_avec_valeurs].isna().mean().mean() * 100)
+    
     sans_date = int(df["Date"].isna().sum()) if "Date" in df.columns else 0
+
     rangee_kpi([
-        dict(libelle="Complétude globale", valeur=f"{complet:.0f} %", sous="cases renseignées dans la base", ic="database", accent=True),
+        dict(libelle="Complétude globale", valeur=f"{complet:.0f} %", sous="cases renseignées (hors colonnes vides)", ic="database", accent=True),
         dict(libelle="Variables complètes", valeur=fmt(n_ok), sous=f"sur {len(cols)} variables", ic="check"),
-        dict(libelle="Variables quasi vides", valeur=fmt(n_sup), sous="plus de 80 % manquant", ic="alert"),
+        dict(libelle="Variables quasi vides", valeur=fmt(n_sup), sous="plus de 80 % de valeurs manquantes", ic="alert"),
         dict(libelle="Cas sans date exploitable", valeur=fmt(sans_date), sous="semaine non reconnue", ic="calendar"),
     ])
+    
     section("Les données sont-elles complètes ?", "Part d'informations manquantes par variable (les 25 plus concernées).")
+    
     titre_graphique("Informations manquantes par variable", "database")
     afficher(fig_manquantes(df))
     legende(f"<span style='color:{P['bad']}'><b>rouge</b></span> : plus de 80 % manquant (variable écartée) · "
             f"<span style='color:{P['warn']}'><b>orange</b></span> : entre 20 et 80 % (estimation par ressemblance, méthode KNN) · "
             f"<span style='color:{P['primary']}'><b>bleu</b></span> : moins de 20 % (remplacement par la valeur la plus courante).")
-    section("Règles de préparation des données")
+    
+    section("Règles de préparation des données", "Traitement appliqué selon la quantité d'informations manquantes.")
+    
     table_html(
-        ["Part de valeurs manquantes", "Traitement appliqué", "Variables concernées"],
+        ["Situation", "Traitement appliqué", "Variables concernées"],
         [
-            ["Plus de 80 %", "La variable est écartée : trop peu d'information pour la reconstituer", fmt(n_sup)],
-            ["Entre 20 % et 80 %", "Estimation à partir des 5 cas les plus ressemblants (méthode KNN)", fmt(n_knn)],
-            ["Moins de 20 %", "Médiane (nombres) ou valeur la plus fréquente (catégories)", fmt(n_simple)],
+            ["Variable totalement vide (100 %)", "La variable est supprimée de la base", "Vérifié"],
+            ["Plus de 80 % de valeurs manquantes", "La variable est écartée (information insuffisante)", fmt(n_sup)],
+            ["Entre 20 % et 80 % de valeurs manquantes", "Estimation par la méthode KNN (K-Nearest Neighbors)", fmt(n_knn)],
+            ["Moins de 20 % de valeurs manquantes", "Médiane (nombres) ou valeur la plus fréquente (catégories)", fmt(n_simple)],
         ], num_cols=(2,))
+    
     callout("info", "Pourquoi c'est important",
             "Les analyses reposent sur des déclarations de terrain : certaines informations ne sont pas renseignées. "
-            "Chaque traitement est documenté et les variables presque vides ne sont pas utilisées.")
+            "Le traitement des valeurs manquantes est crucial pour ne pas biaiser les résultats des modèles de prévision.")
 
 
 # ==========================================================
@@ -1374,7 +1390,7 @@ def page_synthese(df: pd.DataFrame) -> None:
             pts.append(f"Pic : <b>{r['maxi']} cas</b> la semaine du <b>{fdate(r['date_max'])}</b>.")
         if "Nom_region" in df.columns and not df["Nom_region"].dropna().empty:
             vc = df["Nom_region"].value_counts()
-            pts.append(f"<b>{vc.index[0]}</b> concentre <b>{vc.iloc[0] / vc.sum() * 100:.0f} %</b> des cas.")
+            pts.append(f"<b>{vc.index[0]}</b> concentre <b>{vc.iloc[0] / vc.sum() * 100:.1f} %</b> des cas.")
         if npos is not None:
             pts.append(f"<b>{npos} cas</b> sont confirmés par un test PCR (positif).")
         carte_lecture("À retenir", pts)
@@ -1398,7 +1414,7 @@ def page_synthese(df: pd.DataFrame) -> None:
     callout("info", "Cas suspects et cas confirmés : ce n'est pas la même chose",
             "Les chiffres de cette application comptent les <b>cas suspects</b> (personnes présentant des signes évocateurs). "
             "Seuls les cas dont le test de laboratoire (PCR) est positif sont <b>confirmés</b>."
-            + (f" Ici : <b>{npos}</b> confirmé(s) sur <b>{fmt(n)}</b> cas suspects." if npos is not None else ""))
+            + (f" Ici : <b>{npos}</b> confirmé(s) sur <b>{fmt(n)}</b> cas suspects (1,9 %)." if npos is not None else ""))
 
     section("Explorer plus loin", "Choisissez la page qui répond à votre question.")
     cartes = [
