@@ -1341,7 +1341,7 @@ def sec_qualite(df: pd.DataFrame) -> None:
         [
             ["1. Compréhension des données", "Base initiale brute", "474 observations · 61 variables"],
             ["2. Préparation (Nettoyage)", "Suppression des variables identifiantes", "Codes, numéros de dossiers, etc."],
-            ["3. Préparation (Traitement)", "Gestion des valeurs manquantes", "Médiane/Mode (< 20 %)"],
+            ["3. Préparation (Traitement)", "Gestion des valeurs manquantes", "Médiane/Non renseignée (< 20 %)"],
             ["4. Préparation (Sélection)", "Conservation des variables utiles", "Écartement des variables vides (> 80 %)"],
             ["5. Modélisation", "Base finale pour l'analyse", "32 variables conservées sur les 61 initiales"],
         ], num_cols=())
